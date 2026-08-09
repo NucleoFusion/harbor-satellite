@@ -3,6 +3,7 @@ package cli
 import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli/common"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli/root"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli/root/apply"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli/root/auth"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli/root/config"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli/root/group"
@@ -81,6 +82,7 @@ through the environment; see the help for each password-using command.`,
 		satellite.NewRegisterCommand(runtime),
 		satellite.NewRegisterSpiffeCommand(runtime),
 	)
+	applyCmd := apply.NewApplyCommand(runtime)
 
 	rootCmd.AddCommand(
 		authCmd,
@@ -94,6 +96,7 @@ through the environment; see the help for each password-using command.`,
 		removeCmd,
 		syncCmd,
 		registerCmd,
+		applyCmd,
 	)
 
 	return rootCmd
