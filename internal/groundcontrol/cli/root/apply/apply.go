@@ -1,10 +1,14 @@
 package apply
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli/common"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli/models"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 func NewApplyCommand(runtime *common.Runtime) *cobra.Command {
@@ -24,10 +28,26 @@ func NewApplyCommand(runtime *common.Runtime) *cobra.Command {
 				return err
 			}
 
+			var errs []error
 			for _, v := range files {
-				fmt.Println(v)
+				content, err := readFile(v)
+				if err != nil {
+					errs = append(errs, err)
+					continue
+				}
+
+				resources, err := ParseYAML(content)
+				if err != nil {
+					errs = append(errs, err)
+					continue
+				}
+
+				for _, resource := range resources {
+					ApplyResource(runtime, resource)
+				}
 			}
-			return nil
+
+			return errors.Join(errs...)
 		},
 	}
 
@@ -39,24 +59,75 @@ func NewApplyCommand(runtime *common.Runtime) *cobra.Command {
 	return applyCmd
 }
 
-func getAllFiles(argFiles []string, recursive bool) ([]string, error) {
-	files := argFiles
-
-	for _, v := range files {
-		isDir, err := isDirectory(v)
-		if err != nil {
-			return nil, err
-		}
-
-		if isDir {
-			dirFiles, err := WalkDirectory(v, recursive)
-			if err != nil {
-				return nil, err
-			}
-
-			files = append(files, dirFiles...)
-		}
+func ApplyResource(rt *common.Runtime, resource models.YAMLResource) models.ApplyResult {
+	switch resource.Kind {
+	// case "Satellite":
+	case "Group":
+		return applyGroupResource(rt, resource)
+		// case "Config":
 	}
 
-	return files, nil
+	return errorToResult(resource.Kind, resource.Metadata.Name, fmt.Errorf("invalid resource"))
+}
+
+func ParseYAML(data []byte) ([]models.YAMLResource, error) {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+
+	var resources []models.YAMLResource
+	for {
+		var env models.Envelope
+		err := dec.Decode(&env)
+		if err != nil {
+			if err.Error() == "EOF" {
+				break
+			}
+			return nil, fmt.Errorf("decoding document: %w", err)
+		}
+
+		spec, err := decodeSpec(env.Kind, env.Spec)
+		if err != nil {
+			return nil, fmt.Errorf("resource %s/%s: %w", env.Kind, env.Metadata.Name, err)
+		}
+
+		resources = append(resources, models.YAMLResource{
+			APIVersion: env.APIVersion,
+			Kind:       env.Kind,
+			Metadata:   env.Metadata,
+			Spec:       spec,
+		})
+	}
+	return resources, nil
+}
+
+func decodeSpec(kind string, raw yaml.Node) (any, error) {
+	switch kind {
+	case "Group":
+		var s models.GroupSpec
+		if err := raw.Decode(&s); err != nil {
+			return nil, err
+		}
+		return &s, nil
+	case "Config":
+		var s models.ConfigSpec
+		if err := raw.Decode(&s); err != nil {
+			return nil, err
+		}
+		return &s, nil
+	case "Satellite":
+		var s models.SatelliteSpec
+		if err := raw.Decode(&s); err != nil {
+			return nil, err
+		}
+		return &s, nil
+	default:
+		return nil, fmt.Errorf("unknown kind %q", kind)
+	}
+}
+
+func errorToResult(kind, name string, err error) models.ApplyResult {
+	return models.ApplyResult{
+		Kind:  kind,
+		Name:  name,
+		Error: err,
+	}
 }

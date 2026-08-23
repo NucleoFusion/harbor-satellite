@@ -6,6 +6,28 @@ import (
 	"path/filepath"
 )
 
+func getAllFiles(argFiles []string, recursive bool) ([]string, error) {
+	files := argFiles
+
+	for _, v := range files {
+		isDir, err := isDirectory(v)
+		if err != nil {
+			return nil, err
+		}
+
+		if isDir {
+			dirFiles, err := WalkDirectory(v, recursive)
+			if err != nil {
+				return nil, err
+			}
+
+			files = append(files, dirFiles...)
+		}
+	}
+
+	return files, nil
+}
+
 func isDirectory(name string) (bool, error) {
 	info, err := os.Stat(name)
 	if err != nil {
@@ -46,6 +68,11 @@ func WalkDirectory(dir string, recursive bool) ([]string, error) {
 	return files, nil
 }
 
-// func ReadFile() string {
-//
-// }
+func readFile(path string) ([]byte, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("error reading file %s: %v", path, err)
+	}
+
+	return data, nil
+}
